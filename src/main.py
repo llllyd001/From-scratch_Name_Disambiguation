@@ -1,37 +1,35 @@
 import argparse
 
-from pipeline import run_snd_clustering
+from pipeline import run_pipeline
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pub", default="dataset/data/NA_Demo/SND/valid/sna_valid_pub.json")
     parser.add_argument("--raw", default="dataset/data/NA_Demo/SND/valid/sna_valid_raw.json")
-    parser.add_argument("--truth", default="dataset/data/NA_Demo/SND/valid/sna_valid_ground_truth.json")
     parser.add_argument("--out-dir", default="result")
-    parser.add_argument("--threshold", type=float, default=0.22)
-    parser.add_argument("--use-llm", action="store_true")
-    parser.add_argument("--llm-model", default="Qwen/Qwen2.5-0.5B-Instruct")
-    parser.add_argument("--llm-max-new-tokens", type=int, default=8)
+    parser.add_argument("--llm-model", default="deepseek-chat")
+    parser.add_argument("--llm-max-tokens", type=int, default=2048)
+    parser.add_argument("--author-number", type=int, default=None)
     parser.add_argument("--max-papers-per-name", type=int, default=None)
+    parser.add_argument("--merge-threshold", type=float, default=0.75)
     args = parser.parse_args()
 
-    summary = run_snd_clustering(
+    summary = run_pipeline(
         pub_path=args.pub,
         raw_path=args.raw,
-        truth_path=args.truth,
         out_dir=args.out_dir,
-        threshold=args.threshold,
-        use_llm=args.use_llm,
         llm_model=args.llm_model,
-        llm_max_new_tokens=args.llm_max_new_tokens,
+        llm_max_tokens=args.llm_max_tokens,
+        author_number=args.author_number,
         max_papers_per_name=args.max_papers_per_name,
+        merge_threshold=args.merge_threshold,
     )
 
-    print(f"clusters: {summary['clusters']}")
-    print(f"papers: {summary['papers']}")
-    print(f"wrote: {summary['result_path']}")
-    print(f"wrote: {summary['detail_path']}")
+    print(f"targets: {summary['targets']}")
+    print(f"profiles: {summary['profile_path']}")
+    print(f"result: {summary['result_path']}")
+    print(f"analysis: {summary['analysis_path']}")
 
 
 if __name__ == "__main__":
