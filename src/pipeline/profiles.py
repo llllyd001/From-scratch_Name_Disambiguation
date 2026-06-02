@@ -1,6 +1,6 @@
 import re
 
-from .evidence import author_position, broad_topic_text, coauthor_names, missing_fields, specific_topic_text, target_org
+from .evidence import author_position, broad_topic_text, coauthor_names, missing_fields, specific_topic_text, target_org, target_org_key
 from .text_utils import clean_text, norm
 
 
@@ -84,16 +84,17 @@ def build_paper_profile(paper_id, paper, target_key, candidates):
         "year": paper.get("year"),
         "author_position": author_position(paper, target_key),
         "identity_profile": {
-            "organization": match_one(target_org(paper, target_key), candidates["organizations"]),
+            "organization": match_one(target_org_key(paper, target_key), candidates["organizations"]),
             "coauthors": match_many(coauthors, candidates["coauthors"], limit=3),
             "venue": match_one(paper.get("venue", ""), candidates["venues"]),
         },
         "research_profile": {
-            "broad_topics": match_topics(broad_topic_text(paper), candidates["broad_topics"], limit=2),
+            "broad_topics": match_topics(broad_topic_text(paper), candidates["broad_topics"], limit=1),
             "specific_topics": match_topics(specific_topic_text(paper), candidates["specific_topics"], limit=3),
         },
         "raw_evidence": {
             "organization": target_org(paper, target_key),
+            "organization_key": target_org_key(paper, target_key),
             "coauthors": coauthors[:8],
             "venue": clean_text(paper.get("venue", "")),
             "title": clean_text(paper.get("title", "")),

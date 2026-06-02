@@ -1,22 +1,22 @@
 from collections import Counter
 
-from .evidence import broad_topic_text, coauthor_names, specific_topic_text, target_org
+from .evidence import coauthor_names, specific_topic_text, target_org_key
 from .text_utils import clean_text
+from .topic_taxonomy import broad_topic_candidates
 
 
 MAX_FIELD_VALUES = 220
 
 
-def unique_by_frequency(values):
+def unique_by_frequency(values, limit=MAX_FIELD_VALUES):
     counter = Counter(clean_text(value) for value in values if clean_text(value))
-    return [value for value, _ in counter.most_common(MAX_FIELD_VALUES)]
+    return [value for value, _ in counter.most_common(limit)]
 
 
 def collect_candidates(llm, papers, paper_ids, target_key):
-    org_values = unique_by_frequency(target_org(papers[pid], target_key) for pid in paper_ids)
+    org_values = unique_by_frequency(target_org_key(papers[pid], target_key) for pid in paper_ids)
     coauthor_values = unique_by_frequency(name for pid in paper_ids for name in coauthor_names(papers[pid], target_key))
     venue_values = unique_by_frequency(papers[pid].get("venue", "") for pid in paper_ids)
-    broad_topic_values = unique_by_frequency(broad_topic_text(papers[pid]) for pid in paper_ids)
     specific_topic_values = unique_by_frequency(specific_topic_text(papers[pid]) for pid in paper_ids)
 
     return {
@@ -38,12 +38,7 @@ def collect_candidates(llm, papers, paper_ids, target_key):
             "venue",
             "Cluster equivalent journal or conference venue names. Keep different venues separate.",
         ),
-        "broad_topics": llm.extract_candidates(
-            "broad research area",
-            broad_topic_values,
-            "broad_topic",
-            "Summarize broad disciplinary research areas from titles, venues, and abstracts.",
-        ),
+        "broad_topics": broad_topic_candidates(),
         "specific_topics": llm.extract_candidates(
             "specific research topic",
             specific_topic_values,

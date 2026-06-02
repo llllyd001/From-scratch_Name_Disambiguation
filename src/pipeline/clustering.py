@@ -37,9 +37,15 @@ def initial_profile_clusters(profiles):
             if is_valid_value(coauthor):
                 coauthor_index[coauthor].append(paper_id)
 
-    for grouped_ids in list(org_index.values()) + list(coauthor_index.values()):
+    for grouped_ids in org_index.values():
         for paper_id in grouped_ids[1:]:
             union_find.union(grouped_ids[0], paper_id)
+
+    for grouped_ids in coauthor_index.values():
+        for left_index, left_id in enumerate(grouped_ids):
+            for right_id in grouped_ids[left_index + 1:]:
+                if coauthor_compatible(profiles[left_id], profiles[right_id]):
+                    union_find.union(left_id, right_id)
 
     clusters = defaultdict(list)
     for paper_id in paper_ids:
@@ -49,6 +55,18 @@ def initial_profile_clusters(profiles):
 
 def is_valid_value(value):
     return norm(value) not in EMPTY_VALUES
+
+
+def topic_compatible(left, right):
+    left_topics = set(left["research_profile"]["broad_topics"])
+    right_topics = set(right["research_profile"]["broad_topics"])
+    return bool(left_topics & right_topics)
+
+
+def coauthor_compatible(left, right):
+    left_coauthors = set(left["identity_profile"]["coauthors"])
+    right_coauthors = set(right["identity_profile"]["coauthors"])
+    return len(left_coauthors & right_coauthors) >= 2 and topic_compatible(left, right)
 
 
 def summarize_cluster(cluster_id, paper_ids, profiles, candidates):

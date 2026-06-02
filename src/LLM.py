@@ -173,7 +173,9 @@ class CandidateLLM:
             "Candidates:",
         ]
         for candidate in candidates:
-            lines.append(f"{candidate['id']}: {candidate['canonical']}")
+            variants = ", ".join(candidate.get("variants", [])[1:8])
+            detail = f" ({variants})" if variants else ""
+            lines.append(f"{candidate['id']}: {candidate['canonical']}{detail}")
         lines.append("")
         lines.append("Papers:")
         for item in paper_items:

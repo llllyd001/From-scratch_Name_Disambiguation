@@ -1,4 +1,5 @@
 from .text_utils import clean_text, is_target_author
+from .organization import normalize_org
 
 
 def target_author_index(paper, target_key):
@@ -13,6 +14,10 @@ def target_org(paper, target_key):
     if index is None:
         return ""
     return clean_text(paper.get("authors", [])[index].get("org", ""))
+
+
+def target_org_key(paper, target_key):
+    return normalize_org(target_org(paper, target_key))
 
 
 def coauthor_names(paper, target_key):
