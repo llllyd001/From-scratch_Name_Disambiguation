@@ -5,6 +5,7 @@ from LLM import CandidateLLM
 from .analysis import build_cluster_analysis
 from .candidates import collect_candidates
 from .clustering import apply_cluster_merges, initial_profile_clusters, summarize_cluster
+from .merge import recover_merges_with_llm
 from .profiles import build_paper_profile, fill_missing_broad_topics
 
 
@@ -53,13 +54,15 @@ def run_pipeline(
             summarize_cluster(f"c{index}", cluster, profiles, candidates)
             for index, cluster in enumerate(initial_clusters, start=1)
         ]
-        merges = llm.suggest_cluster_merges(target_key, summaries, merge_threshold)
+        merge_policy, merge_policy_stats, merges = recover_merges_with_llm(llm, target_key, summaries, merge_threshold)
         groups = apply_cluster_merges(summaries, merges)
 
         profile_output[target_key] = {
             "candidates": candidates,
             "papers": profiles,
             "initial_clusters": summaries,
+            "merge_policy": merge_policy,
+            "merge_policy_stats": merge_policy_stats,
             "llm_merges": merges,
         }
         result[target_key] = groups
@@ -70,7 +73,7 @@ def run_pipeline(
             profiles,
             ground_truth,
         )
-        print(f"Finished {target_key}: {len(initial_clusters)} -> {len(groups)} clusters", flush=True)
+        print(f"Finished {target_key}: {len(initial_clusters)} -> {len(groups)} clusters ({merge_policy})", flush=True)
 
     out_dir = Path(out_dir)
     profile_path = out_dir / "sna_valid_scholar_profiles.json"

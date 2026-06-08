@@ -72,6 +72,7 @@ def coauthor_compatible(left, right):
 def summarize_cluster(cluster_id, paper_ids, profiles, candidates):
     orgs = []
     coauthors = []
+    venues = []
     broad_topics = []
     specific_topics = []
     years = []
@@ -82,6 +83,7 @@ def summarize_cluster(cluster_id, paper_ids, profiles, candidates):
         years.append(profile.get("year"))
         orgs.extend([identity["organization"]] if identity["organization"] else [])
         coauthors.extend(identity["coauthors"])
+        venues.extend([identity["venue"]] if identity["venue"] else [])
         broad_topics.extend(research["broad_topics"])
         specific_topics.extend(research["specific_topics"])
 
@@ -96,6 +98,7 @@ def summarize_cluster(cluster_id, paper_ids, profiles, candidates):
         "paper_count": len(paper_ids),
         "years": [min(clean_years), max(clean_years)] if clean_years else [],
         "organizations": names(orgs, "organizations", 5),
+        "venues": names(venues, "venues", 5),
         "coauthors": names(coauthors, "coauthors", 8),
         "broad_topics": names(broad_topics, "broad_topics", 4),
         "specific_topics": names(specific_topics, "specific_topics", 5),

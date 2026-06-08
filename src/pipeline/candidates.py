@@ -1,6 +1,7 @@
 from collections import Counter
 
-from .evidence import coauthor_names, specific_topic_text, target_org_key
+from .evidence import coauthor_names, specific_topic_text, target_org
+from .organization import build_org_candidates
 from .text_utils import clean_text
 from .topic_taxonomy import broad_topic_candidates
 
@@ -14,18 +15,13 @@ def unique_by_frequency(values, limit=MAX_FIELD_VALUES):
 
 
 def collect_candidates(llm, papers, paper_ids, target_key):
-    org_values = unique_by_frequency(target_org_key(papers[pid], target_key) for pid in paper_ids)
+    org_values = unique_by_frequency(target_org(papers[pid], target_key) for pid in paper_ids)
     coauthor_values = unique_by_frequency(name for pid in paper_ids for name in coauthor_names(papers[pid], target_key))
     venue_values = unique_by_frequency(papers[pid].get("venue", "") for pid in paper_ids)
     specific_topic_values = unique_by_frequency(specific_topic_text(papers[pid]) for pid in paper_ids)
 
     return {
-        "organizations": llm.extract_candidates(
-            "organization",
-            org_values,
-            "org",
-            "Cluster equivalent institution, department, lab, or address strings. Be broad for spelling variants, but do not merge unrelated institutions.",
-        ),
+        "organizations": build_org_candidates(org_values),
         "coauthors": llm.extract_candidates(
             "coauthor name",
             coauthor_values,

@@ -105,60 +105,63 @@ class CandidateLLM:
             })
         return candidates or self._fallback_candidates(prefix, values)
 
-    def suggest_cluster_merges(self, target_name, cluster_summaries, threshold):
-        if len(cluster_summaries) < 2:
+    def suggest_anchor_merges(self, target_name, anchor, candidates, threshold):
+        if not candidates:
             return []
-
         lines = [
             f"Ambiguous author name: {target_name}",
-            "You are given preliminary scholar clusters.",
-            "Each cluster was built from papers sharing strong identity evidence such as organization or coauthor.",
-            "Merge clusters only when they likely describe the same real scholar.",
-            "Use identity evidence first: organization and coauthors.",
-            "Use research topics and years only as supporting evidence.",
-            "Missing evidence is unknown, not negative evidence.",
+            "The existing clusters were built by high-precision local rules.",
+            "Your task is recall recovery: decide which candidate clusters should be merged into the anchor cluster.",
+            "Do not split clusters. Do not create new clusters.",
+            "Missing fields are unknown, not negative evidence.",
+            "Do not merge based only on broad topic, venue, or institution.",
+            "Strong evidence includes distinctive shared coauthors, same normalized institution plus highly similar specific topics, or repeated matches across coauthors, venues, and specific topics.",
+            "Broad field is only background context. It is not enough for merging.",
+            "If the anchor is large, be especially conservative because a wrong merge can mix different real authors.",
             f"Only return merges with confidence >= {threshold}.",
-            'Return JSON only: {"merges":[{"clusters":["c1","c2"],"confidence":0.82,"reason":"short reason"}]}',
-            "If no merge is reliable, return: {\"merges\":[]}",
+            'Return JSON only: {"merge_candidates":[{"id":"c12","confidence":0.82,"reason":"short reason"}]}',
+            "If no candidate is reliable, return: {\"merge_candidates\":[]}",
             "",
-            "Clusters:",
+            "Anchor cluster:",
+            self._format_cluster(anchor),
+            "",
+            "Candidate clusters:",
         ]
-        for cluster in cluster_summaries:
-            lines.append(
-                " | ".join([
-                    cluster["id"],
-                    f"papers={cluster['paper_count']}",
-                    f"years={cluster['years']}",
-                    f"orgs={cluster['organizations']}",
-                    f"coauthors={cluster['coauthors']}",
-                    f"broad_topics={cluster['broad_topics']}",
-                    f"specific_topics={cluster['specific_topics']}",
-                ])
-            )
+        for candidate in candidates:
+            lines.append(self._format_cluster(candidate))
 
         response = self._chat("\n".join(lines))
         parsed = self._extract_json(response)
-        if not parsed or not isinstance(parsed.get("merges"), list):
+        if not parsed or not isinstance(parsed.get("merge_candidates"), list):
             return []
 
-        valid_ids = {cluster["id"] for cluster in cluster_summaries}
+        valid_ids = {candidate["id"] for candidate in candidates}
         merges = []
-        for item in parsed["merges"]:
-            cluster_ids = item.get("clusters", [])
-            if not isinstance(cluster_ids, list):
-                continue
+        for item in parsed["merge_candidates"]:
+            cluster_id = item.get("id")
             try:
                 confidence = float(item.get("confidence", 0))
             except (TypeError, ValueError):
                 confidence = 0
-            clean_ids = [cluster_id for cluster_id in cluster_ids if cluster_id in valid_ids]
-            if confidence >= threshold and len(clean_ids) >= 2:
+            if cluster_id in valid_ids and confidence >= threshold:
                 merges.append({
-                    "clusters": clean_ids,
+                    "clusters": [anchor["id"], cluster_id],
                     "confidence": confidence,
                     "reason": str(item.get("reason", "")),
                 })
         return merges
+
+    def _format_cluster(self, cluster):
+        return " | ".join([
+            cluster["id"],
+            f"papers={cluster['paper_count']}",
+            f"years={cluster['years']}",
+            f"orgs={cluster['organizations']}",
+            f"venues={cluster.get('venues', [])}",
+            f"coauthors={cluster['coauthors']}",
+            f"broad_topics={cluster['broad_topics']}",
+            f"specific_topics={cluster['specific_topics']}",
+        ])
 
     def assign_broad_topics(self, paper_items, candidates):
         if not paper_items or not candidates:
