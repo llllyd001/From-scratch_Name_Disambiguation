@@ -1,29 +1,68 @@
+ANCHOR_MIN_PAPERS = 15
+REPAIR_MAX_PAPERS = 14
+CANDIDATE_BATCH_SIZE = 30
+MAX_LARGE_ANCHORS = 12
+MAX_REPAIR_ANCHORS = 24
+REPAIR_CANDIDATE_LIMIT = 12
+
+
 def recover_merges_with_llm(llm, target_key, summaries, threshold):
-    policy, policy_stats = choose_merge_policy(summaries)
-    config = policy_config(policy)
-    anchors = [cluster for cluster in summaries if cluster["paper_count"] >= config["min_anchor_size"]][:config["max_anchors"]]
-    small_clusters = [cluster for cluster in summaries if cluster["paper_count"] <= 3]
-    if not anchors or not small_clusters:
+    policy = "strict_all_small"
+    anchors = [cluster for cluster in summaries if cluster["paper_count"] >= ANCHOR_MIN_PAPERS][:MAX_LARGE_ANCHORS]
+    repair_clusters = [cluster for cluster in summaries if cluster["paper_count"] <= REPAIR_MAX_PAPERS]
+    policy_stats = merge_stats(summaries, anchors, repair_clusters)
+    if not repair_clusters:
         return policy, policy_stats, []
 
     proposals = []
     for anchor in anchors:
-        candidates = ranked_candidates(anchor, small_clusters, config)
+        for batch in large_anchor_candidate_batches(anchor, repair_clusters):
+            proposals.extend(llm.suggest_anchor_merges(target_key, anchor, batch, threshold))
+
+    for anchor in repair_anchors(repair_clusters):
+        candidates = ranked_repair_candidates(anchor, repair_clusters)
         if candidates:
             proposals.extend(llm.suggest_anchor_merges(target_key, anchor, candidates, threshold))
+
     return policy, policy_stats, dedupe_merges(proposals)
 
 
-def ranked_candidates(anchor, candidates, config):
+def large_anchor_candidate_batches(anchor, repair_clusters):
+    candidates = [cluster for cluster in repair_clusters if cluster["id"] != anchor["id"]]
+    if len(candidates) <= CANDIDATE_BATCH_SIZE:
+        return [candidates] if candidates else []
+    ranked = ranked_by_blocking_score(anchor, candidates, CANDIDATE_BATCH_SIZE)
+    return [ranked] if ranked else []
+
+
+def ranked_by_blocking_score(anchor, candidates, limit):
     scored = []
     for candidate in candidates:
-        if not eligible_candidate(anchor, candidate, config["policy"]):
+        score = blocking_score(anchor, candidate)
+        if score:
+            scored.append((score, candidate["paper_count"], candidate))
+    scored.sort(key=lambda item: (-item[0], item[1], item[2]["id"]))
+    return [candidate for _, _, candidate in scored[:limit]]
+
+
+def repair_anchors(repair_clusters):
+    anchors = [cluster for cluster in repair_clusters if cluster["paper_count"] >= 2]
+    anchors.sort(key=lambda cluster: (-cluster["paper_count"], cluster["id"]))
+    return anchors[:MAX_REPAIR_ANCHORS]
+
+
+def ranked_repair_candidates(anchor, repair_clusters):
+    scored = []
+    for candidate in repair_clusters:
+        if cluster_number(candidate["id"]) <= cluster_number(anchor["id"]):
+            continue
+        if not repair_candidate(anchor, candidate):
             continue
         score = blocking_score(anchor, candidate)
         if score:
             scored.append((score, candidate["paper_count"], candidate))
     scored.sort(key=lambda item: (-item[0], item[1], item[2]["id"]))
-    return [candidate for _, _, candidate in scored[:config["candidate_limit"]]]
+    return [candidate for _, _, candidate in scored[:REPAIR_CANDIDATE_LIMIT]]
 
 
 def blocking_score(left, right):
@@ -41,65 +80,42 @@ def blocking_score(left, right):
     return score
 
 
-def overlap_count(left, right):
-    return len(set(left) & set(right))
-
-
-def eligible_candidate(anchor, candidate, policy):
+def repair_candidate(anchor, candidate):
     shared_org = overlap_count(anchor["organizations"], candidate["organizations"])
     shared_coauthors = overlap_count(anchor["coauthors"], candidate["coauthors"])
     shared_venues = overlap_count(anchor.get("venues", []), candidate.get("venues", []))
+    shared_broad = overlap_count(anchor["broad_topics"], candidate["broad_topics"])
     shared_specific = overlap_count(anchor["specific_topics"], candidate["specific_topics"])
 
     if shared_coauthors >= 1:
         return True
     if shared_org >= 1 and shared_specific >= 1:
         return True
-    if policy == "permissive" and anchor["paper_count"] < 20 and shared_venues >= 1 and shared_specific >= 1:
+    if shared_venues >= 1 and shared_specific >= 1:
+        return True
+    if shared_specific >= 2 and shared_broad >= 1:
         return True
     return False
 
 
-def choose_merge_policy(summaries):
+def merge_stats(summaries, anchors, repair_clusters):
     paper_counts = sorted((cluster["paper_count"] for cluster in summaries), reverse=True)
     singleton_ratio = sum(count == 1 for count in paper_counts) / len(paper_counts) if paper_counts else 0
-    top_anchors = summaries[: min(5, len(summaries))]
-    evidence_coverage = average_anchor_evidence(top_anchors)
+    top_anchors = anchors[: min(5, len(anchors))]
     pairwise_stats = anchor_pairwise_stats(top_anchors)
-
-    stats = {
+    return {
         "singleton_ratio": round(singleton_ratio, 3),
+        "anchor_min_papers": ANCHOR_MIN_PAPERS,
+        "repair_max_papers": REPAIR_MAX_PAPERS,
+        "large_anchor_count": len(anchors),
+        "repair_cluster_count": len(repair_clusters),
         "top_anchor_count": len(top_anchors),
-        "top_anchor_evidence": round(evidence_coverage, 3),
+        "top_anchor_evidence": round(average_anchor_evidence(top_anchors), 3),
         "pair_avg_shared_org": round(pairwise_stats["avg_shared_org"], 3),
         "pair_avg_shared_coauthors": round(pairwise_stats["avg_shared_coauthors"], 3),
         "pair_avg_shared_specific": round(pairwise_stats["avg_shared_specific"], 3),
         "pair_avg_shared_broad": round(pairwise_stats["avg_shared_broad"], 3),
         "pair_risk_score": round(pairwise_stats["risk_score"], 3),
-    }
-
-    if pairwise_stats["risk_score"] >= 1.55:
-        return "conservative", stats
-    if pairwise_stats["risk_score"] <= 0.85 and evidence_coverage >= 2.0:
-        return "permissive", stats
-    if singleton_ratio >= 0.75 and pairwise_stats["risk_score"] <= 1.2:
-        return "permissive", stats
-    return "conservative", stats
-
-
-def policy_config(policy):
-    if policy == "conservative":
-        return {
-            "policy": policy,
-            "min_anchor_size": 3,
-            "max_anchors": 12,
-            "candidate_limit": 10,
-        }
-    return {
-        "policy": policy,
-        "min_anchor_size": 3,
-        "max_anchors": 18,
-        "candidate_limit": 14,
     }
 
 
@@ -157,6 +173,15 @@ def anchor_pairwise_stats(anchors):
         "avg_shared_broad": avg_shared_broad,
         "risk_score": risk_score,
     }
+
+
+def overlap_count(left, right):
+    return len(set(left) & set(right))
+
+
+def cluster_number(cluster_id):
+    digits = "".join(char for char in cluster_id if char.isdigit())
+    return int(digits) if digits else 0
 
 
 def dedupe_merges(merges):

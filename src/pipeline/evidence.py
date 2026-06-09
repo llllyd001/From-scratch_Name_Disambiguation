@@ -66,7 +66,7 @@ def specific_topic_text(paper):
     keywords = ", ".join(paper.get("keywords") or [])
     parts = [
         clean_text(paper.get("title", "")),
+        clean_text(paper.get("venue", "")),
         keywords,
-        clean_text(paper.get("abstract", ""))[:350],
     ]
     return " | ".join(part for part in parts if part)

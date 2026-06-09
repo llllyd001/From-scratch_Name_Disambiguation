@@ -152,7 +152,7 @@ class CandidateLLM:
         return merges
 
     def _format_cluster(self, cluster):
-        return " | ".join([
+        summary = " | ".join([
             cluster["id"],
             f"papers={cluster['paper_count']}",
             f"years={cluster['years']}",
@@ -162,6 +162,19 @@ class CandidateLLM:
             f"broad_topics={cluster['broad_topics']}",
             f"specific_topics={cluster['specific_topics']}",
         ])
+        papers = cluster.get("representative_papers", [])
+        if not papers:
+            return summary
+        paper_lines = []
+        for paper in papers:
+            paper_lines.append(
+                f"{paper['paper_id']}: year={paper.get('year')} "
+                f"position={paper.get('author_position')} "
+                f"title={paper.get('title', '')} "
+                f"venue={paper.get('venue', '')} "
+                f"keywords={paper.get('keywords', [])}"
+            )
+        return summary + "\n  papers: " + "\n  ".join(paper_lines)
 
     def assign_broad_topics(self, paper_items, candidates):
         if not paper_items or not candidates:

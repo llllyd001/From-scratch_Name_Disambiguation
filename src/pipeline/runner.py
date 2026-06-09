@@ -4,9 +4,9 @@ from data_io import dump_json, load_json, raw_candidate_sets
 from LLM import CandidateLLM
 from .analysis import build_cluster_analysis
 from .candidates import collect_candidates
-from .clustering import apply_cluster_merges, initial_profile_clusters, summarize_cluster
-from .merge import recover_merges_with_llm
 from .profiles import build_paper_profile, fill_missing_broad_topics
+from .stages.llm_merge import recover_merges_with_llm
+from .stages.local_clustering import apply_cluster_merges, build_local_clusters, summarize_cluster
 
 
 def run_pipeline(
@@ -49,10 +49,10 @@ def run_pipeline(
             for pid in paper_ids
         }
         fill_missing_broad_topics(llm, profiles, candidates)
-        initial_clusters = initial_profile_clusters(profiles)
+        identity_clusters, local_clusters = build_local_clusters(profiles)
         summaries = [
             summarize_cluster(f"c{index}", cluster, profiles, candidates)
-            for index, cluster in enumerate(initial_clusters, start=1)
+            for index, cluster in enumerate(local_clusters, start=1)
         ]
         merge_policy, merge_policy_stats, merges = recover_merges_with_llm(llm, target_key, summaries, merge_threshold)
         groups = apply_cluster_merges(summaries, merges)
@@ -60,6 +60,10 @@ def run_pipeline(
         profile_output[target_key] = {
             "candidates": candidates,
             "papers": profiles,
+            "identity_clusters": [
+                summarize_cluster(f"identity_{index}", cluster, profiles, candidates)
+                for index, cluster in enumerate(identity_clusters, start=1)
+            ],
             "initial_clusters": summaries,
             "merge_policy": merge_policy,
             "merge_policy_stats": merge_policy_stats,
@@ -73,7 +77,11 @@ def run_pipeline(
             profiles,
             ground_truth,
         )
-        print(f"Finished {target_key}: {len(initial_clusters)} -> {len(groups)} clusters ({merge_policy})", flush=True)
+        print(
+            f"Finished {target_key}: {len(identity_clusters)} identity -> "
+            f"{len(local_clusters)} content -> {len(groups)} final clusters ({merge_policy})",
+            flush=True,
+        )
 
     out_dir = Path(out_dir)
     profile_path = out_dir / "sna_valid_scholar_profiles.json"
