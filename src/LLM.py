@@ -105,76 +105,53 @@ class CandidateLLM:
             })
         return candidates or self._fallback_candidates(prefix, values)
 
-    def suggest_anchor_merges(self, target_name, anchor, candidates, threshold):
-        if not candidates:
-            return []
-        lines = [
+    def compare_papers(self, target_name, paper_a, paper_b, fields, score_threshold):
+        prompt = "\n".join([
             f"Ambiguous author name: {target_name}",
-            "The existing clusters were built by high-precision local rules.",
-            "Your task is recall recovery: decide which candidate clusters should be merged into the anchor cluster.",
-            "Do not split clusters. Do not create new clusters.",
+            "Decide whether Paper A and Paper B were written by the same real person with this ambiguous name.",
+            "Use only the fields shown below.",
             "Missing fields are unknown, not negative evidence.",
-            "Do not merge based only on broad topic, venue, or institution.",
-            "Strong evidence includes distinctive shared coauthors, same normalized institution plus highly similar specific topics, or repeated matches across coauthors, venues, and specific topics.",
-            "Broad field is only background context. It is not enough for merging.",
-            "If the anchor is large, be especially conservative because a wrong merge can mix different real authors.",
-            f"Only return merges with confidence >= {threshold}.",
-            'Return JSON only: {"merge_candidates":[{"id":"c12","confidence":0.82,"reason":"short reason"}]}',
-            "If no candidate is reliable, return: {\"merge_candidates\":[]}",
+            "Give same_author_score from 0 to 1. Positive pairs should score higher than negative pairs.",
+            f"Use same_author=true when same_author_score >= {score_threshold}.",
+            'Return JSON only: {"same_author":true,"same_author_score":0.82,"confidence":0.82,"reason":"short reason"}',
             "",
-            "Anchor cluster:",
-            self._format_cluster(anchor),
+            "Paper A:",
+            self._format_paper_fields(paper_a, fields),
             "",
-            "Candidate clusters:",
-        ]
-        for candidate in candidates:
-            lines.append(self._format_cluster(candidate))
-
-        response = self._chat("\n".join(lines))
-        parsed = self._extract_json(response)
-        if not parsed or not isinstance(parsed.get("merge_candidates"), list):
-            return []
-
-        valid_ids = {candidate["id"] for candidate in candidates}
-        merges = []
-        for item in parsed["merge_candidates"]:
-            cluster_id = item.get("id")
-            try:
-                confidence = float(item.get("confidence", 0))
-            except (TypeError, ValueError):
-                confidence = 0
-            if cluster_id in valid_ids and confidence >= threshold:
-                merges.append({
-                    "clusters": [anchor["id"], cluster_id],
-                    "confidence": confidence,
-                    "reason": str(item.get("reason", "")),
-                })
-        return merges
-
-    def _format_cluster(self, cluster):
-        summary = " | ".join([
-            cluster["id"],
-            f"papers={cluster['paper_count']}",
-            f"years={cluster['years']}",
-            f"orgs={cluster['organizations']}",
-            f"venues={cluster.get('venues', [])}",
-            f"coauthors={cluster['coauthors']}",
-            f"broad_topics={cluster['broad_topics']}",
-            f"specific_topics={cluster['specific_topics']}",
+            "Paper B:",
+            self._format_paper_fields(paper_b, fields),
         ])
-        papers = cluster.get("representative_papers", [])
-        if not papers:
-            return summary
-        paper_lines = []
-        for paper in papers:
-            paper_lines.append(
-                f"{paper['paper_id']}: year={paper.get('year')} "
-                f"position={paper.get('author_position')} "
-                f"title={paper.get('title', '')} "
-                f"venue={paper.get('venue', '')} "
-                f"keywords={paper.get('keywords', [])}"
-            )
-        return summary + "\n  papers: " + "\n  ".join(paper_lines)
+        parsed = self._extract_json(self._chat(prompt)) or {}
+        score = self._safe_score(parsed.get("same_author_score"), parsed.get("same_author"), parsed.get("confidence"))
+        return {
+            "same_author": score >= score_threshold,
+            "same_author_score": score,
+            "confidence": self._safe_float(parsed.get("confidence")),
+            "reason": str(parsed.get("reason", "")),
+        }
+
+    def _format_paper_fields(self, paper, fields):
+        lines = []
+        for field in fields:
+            value = paper.get(field, "")
+            if isinstance(value, list):
+                value = "; ".join(str(item) for item in value if item)
+            lines.append(f"{field}: {value if value else '[missing]'}")
+        return "\n".join(lines)
+
+    def _safe_float(self, value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _safe_score(self, value, same_author, confidence):
+        if value is not None:
+            score = self._safe_float(value)
+        else:
+            confidence = self._safe_float(confidence)
+            score = confidence if same_author else 1 - confidence
+        return max(0.0, min(1.0, score))
 
     def assign_broad_topics(self, paper_items, candidates):
         if not paper_items or not candidates:

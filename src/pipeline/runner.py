@@ -54,7 +54,13 @@ def run_pipeline(
             summarize_cluster(f"c{index}", cluster, profiles, candidates)
             for index, cluster in enumerate(local_clusters, start=1)
         ]
-        merge_policy, merge_policy_stats, merges = recover_merges_with_llm(llm, target_key, summaries, merge_threshold)
+        merge_policy, merge_policy_stats, merges = recover_merges_with_llm(
+            llm,
+            target_key,
+            summaries,
+            merge_threshold,
+            profiles,
+        )
         groups = apply_cluster_merges(summaries, merges)
 
         profile_output[target_key] = {
