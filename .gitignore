@@ -5,6 +5,11 @@
 !.gitattributes
 
 !src/
+!src/**/
 !src/*.py
 !src/**/*.py
 !.md
+!result/
+!result/stage2_field_combinations/
+!result/stage2_field_combinations/**/
+!result/stage2_field_combinations/**/**/**/*.json
