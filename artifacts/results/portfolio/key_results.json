@@ -1,0 +1,44 @@
+{
+  "recommended_configuration": {
+    "fields": ["title", "coauthors", "organization"],
+    "context": "deterministic flat list",
+    "output": "compact record-index assignments",
+    "temperature": 0,
+    "validation": "complete and unique paper-ID assignment"
+  },
+  "na_demo_pilot": {
+    "author_blocks": 3,
+    "macro_pairwise_f1": 0.9792,
+    "macro_b3_f1": 0.9814
+  },
+  "v3_validation": {
+    "author_blocks": 80,
+    "mean_pairwise_f1": 0.7852,
+    "median_pairwise_f1": 0.8863,
+    "mean_b3_f1": 0.8292,
+    "median_b3_f1": 0.9076
+  },
+  "successful_recovery_cases": [
+    {
+      "name": "zheng_hu",
+      "pairwise_f1_before": 0.8663,
+      "pairwise_f1_after": 0.9874,
+      "b3_f1_before": 0.9299,
+      "b3_f1_after": 0.9913
+    },
+    {
+      "name": "yi_qian",
+      "pairwise_f1_before": 0.0,
+      "pairwise_f1_after": 0.9647,
+      "b3_f1_before": 0.0567,
+      "b3_f1_after": 0.9389
+    }
+  ],
+  "router_exploration": {
+    "features": 27,
+    "train_blocks": 64,
+    "frozen_test_blocks": 16,
+    "test_accepted_blocks": 0,
+    "conclusion": "Useful pre-call signals were observed, but the fitted router was not deployable."
+  }
+}

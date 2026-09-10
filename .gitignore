@@ -1,15 +1,47 @@
-# Ignore everything
-**
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
 
-!.gitignore
-!.gitattributes
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
 
-!src/
-!src/**/
-!src/*.py
-!src/**/*.py
-!.md
-!result/
-!result/stage2_field_combinations/
-!result/stage2_field_combinations/**/
-!result/stage2_field_combinations/**/**/**/*.json
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+
+# Datasets and local third-party checkouts
+data/whoiswho/
+data/archive/
+references/third_party/
+references/papers/*.pdf
+
+# Generated and raw experiment artifacts
+artifacts/results/**
+!artifacts/results/README.md
+!artifacts/results/portfolio/
+!artifacts/results/portfolio/**
+artifacts/figures/**
+!artifacts/figures/README.md
+
+# API diagnostics, models, and temporary experiment state
+*.response.json
+*.metadata.json
+*.joblib
+*.pkl
+*.log
+
+# Personal submission and presentation material remains local
+docs/submission/
+docs/presentation/
